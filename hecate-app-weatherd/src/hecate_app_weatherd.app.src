@@ -1,0 +1,23 @@
+{application, hecate_app_weatherd, [
+    {description, "Hecate Weather - Mesh RPC gateway for Open-Meteo weather data"},
+    {vsn, "0.1.0"},
+    {registered, [app_weather_sup, app_weather_cache, app_weather_rpc]},
+    {mod, {hecate_app_weatherd_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        ssl,
+        inets
+    ]},
+    {env, [
+        {open_meteo_url, "https://api.open-meteo.com"},
+        {cache_ttl_seconds, 900},
+        {rpc_procedure, "io.hecate.weather.get_current"}
+    ]},
+    {modules, []},
+    {licenses, ["Apache-2.0"]},
+    {links, [
+        {"GitHub", "https://github.com/hecate-apps/hecate-app-weather"}
+    ]}
+]}.

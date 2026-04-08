@@ -1,0 +1,26 @@
+{
+  "name": "hecate-app-weather",
+  "display_name": "Weather",
+  "version": "0.1.0",
+  "icon": "cloud",
+  "description": "Real weather data via mesh RPC — powered by Open-Meteo",
+  "callback_module": "app_weather_rpc",
+  "plugin_type": "standalone",
+  "tag": "weather-station",
+  "trust_level": "untrusted",
+  "permissions": [],
+  "repository": "https://github.com/hecate-apps/hecate-app-weather",
+  "license": "Apache-2.0",
+  "appstore": {
+    "org": "hecate-apps",
+    "homepage": "https://github.com/hecate-apps/hecate-app-weather",
+    "tags": "weather,mesh,rpc,open-meteo,microstation",
+    "license_type": "free",
+    "fee_cents": 0,
+    "fee_currency": "EUR",
+    "node_limit": 0,
+    "min_daemon_version": "0.14.0",
+    "group_name": "DATA",
+    "group_icon": "cloud"
+  }
+}
