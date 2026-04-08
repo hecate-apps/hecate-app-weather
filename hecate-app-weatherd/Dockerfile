@@ -6,7 +6,7 @@ FROM erlang:27-alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache git curl bash build-base
+RUN apk add --no-cache git curl bash build-base rust cargo cmake
 
 RUN curl -fsSL https://s3.amazonaws.com/rebar3/rebar3 -o /usr/local/bin/rebar3 && \
     chmod +x /usr/local/bin/rebar3
