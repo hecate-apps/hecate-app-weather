@@ -130,13 +130,20 @@ fetch_weather(Lat, Lng) ->
 %% Open-Meteo HTTP Client
 %%====================================================================
 
+%% All current fields we request from Open-Meteo.
+%% These feed both the weather display AND the synthetic energy model.
+-define(CURRENT_FIELDS,
+    "temperature_2m,relative_humidity_2m,apparent_temperature,"
+    "precipitation,rain,showers,snowfall,"
+    "cloud_cover,pressure_msl,surface_pressure,"
+    "wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
+    "weather_code,is_day,uv_index,visibility").
+
 fetch_from_open_meteo(Lat, Lng) ->
     BaseUrl = open_meteo_url(),
     Url = lists:flatten(io_lib:format(
-        "~s/v1/forecast?latitude=~.4f&longitude=~.4f"
-        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,"
-        "wind_direction_10m,weather_code,is_day",
-        [BaseUrl, Lat, Lng])),
+        "~s/v1/forecast?latitude=~.4f&longitude=~.4f&current=~s",
+        [BaseUrl, Lat, Lng, ?CURRENT_FIELDS])),
     case httpc:request(get, {Url, []},
                        [{timeout, 10_000}, {ssl, [{verify, verify_none}]}], []) of
         {ok, {{_, 200, _}, _Headers, Body}} ->
@@ -151,16 +158,32 @@ parse_open_meteo_response(Body) ->
     try
         Json = json:decode(iolist_to_binary(Body)),
         Current = maps:get(<<"current">>, Json, #{}),
+        F = fun(Key) -> maps:get(Key, Current, null) end,
         Data = #{
-            temperature_c => maps:get(<<"temperature_2m">>, Current, null),
-            humidity_pct => maps:get(<<"relative_humidity_2m">>, Current, null),
-            wind_kmh => maps:get(<<"wind_speed_10m">>, Current, null),
-            wind_direction_deg => maps:get(<<"wind_direction_10m">>, Current, null),
-            weather_code => maps:get(<<"weather_code">>, Current, null),
-            is_day => maps:get(<<"is_day">>, Current, null) =:= 1,
-            conditions => weather_code_to_conditions(
-                maps:get(<<"weather_code">>, Current, 0)),
-            source => <<"open-meteo.com">>
+            %% Core weather
+            temperature_c        => F(<<"temperature_2m">>),
+            apparent_temperature_c => F(<<"apparent_temperature">>),
+            humidity_pct         => F(<<"relative_humidity_2m">>),
+            weather_code         => F(<<"weather_code">>),
+            conditions           => weather_code_to_conditions(F(<<"weather_code">>)),
+            is_day               => F(<<"is_day">>) =:= 1,
+            %% Wind
+            wind_kmh             => F(<<"wind_speed_10m">>),
+            wind_direction_deg   => F(<<"wind_direction_10m">>),
+            wind_gusts_kmh       => F(<<"wind_gusts_10m">>),
+            %% Precipitation
+            precipitation_mm     => F(<<"precipitation">>),
+            rain_mm              => F(<<"rain">>),
+            showers_mm           => F(<<"showers">>),
+            snowfall_cm          => F(<<"snowfall">>),
+            %% Atmosphere
+            cloud_cover_pct      => F(<<"cloud_cover">>),
+            pressure_hpa         => F(<<"pressure_msl">>),
+            surface_pressure_hpa => F(<<"surface_pressure">>),
+            visibility_m         => F(<<"visibility">>),
+            uv_index             => F(<<"uv_index">>),
+            %% Meta
+            source               => <<"open-meteo.com">>
         },
         {ok, Data}
     catch
