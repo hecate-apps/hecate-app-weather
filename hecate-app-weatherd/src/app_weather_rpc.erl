@@ -63,7 +63,10 @@ handle_info(connect, State) ->
 
 handle_info({advertise, Client}, State) ->
     Procedure = rpc_procedure(),
-    Handler = fun(Args) -> handle_weather_request(Args) end,
+    Handler = fun(Args) ->
+        Result = handle_weather_request(Args),
+        iolist_to_binary(json:encode(Result))
+    end,
     case macula_relay_client:advertise(Client, Procedure, Handler) of
         {ok, _Ref} ->
             logger:info("[app_weather_rpc] Advertised ~s on mesh", [Procedure]),
@@ -94,6 +97,17 @@ handle_weather_request(Args) when is_map(Args) ->
         {_, undefined} -> #{error => <<"missing lng">>};
         {L, G} -> fetch_weather(L, G)
     end;
+handle_weather_request(Args) when is_binary(Args) ->
+    %% Relay may pass args as JSON binary — decode and retry
+    try json:decode(Args) of
+        Map when is_map(Map) -> handle_weather_request(Map);
+        _ -> #{error => <<"expected JSON object with lat/lng">>}
+    catch _:_ ->
+        #{error => <<"invalid JSON">>}
+    end;
+handle_weather_request(Args) when is_list(Args) ->
+    %% May arrive as proplist from some relay versions
+    handle_weather_request(maps:from_list(Args));
 handle_weather_request(_) ->
     #{error => <<"expected map with lat/lng">>}.
 
