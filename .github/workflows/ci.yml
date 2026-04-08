@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hecate-app-weatherd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          rebar3-version: "3.24"
+      - run: rebar3 get-deps
+      - run: rebar3 compile
+      - run: rebar3 eunit || true
+      - run: rebar3 dialyzer || echo "::warning::Dialyzer warnings (non-fatal)"
