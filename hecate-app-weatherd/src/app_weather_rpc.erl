@@ -44,7 +44,7 @@ handle_info(connect, State) ->
     Identity = identity(),
     logger:info("[app_weather_rpc] Connecting to mesh (realm: ~s, relays: ~p)",
                 [Realm, Relays]),
-    case macula_relay_client:start_link(#{
+    case macula_mesh_client:start_link(#{
         relays => Relays,
         realm => Realm,
         identity => Identity,
@@ -67,7 +67,7 @@ handle_info({advertise, Client}, State) ->
         Result = handle_weather_request(Args),
         iolist_to_binary(json:encode(Result))
     end,
-    case macula_relay_client:advertise(Client, Procedure, Handler) of
+    case macula_mesh_client:advertise(Client, Procedure, Handler) of
         {ok, _Ref} ->
             logger:info("[app_weather_rpc] Advertised ~s on mesh", [Procedure]),
             {noreply, State#{advertised => true}};
