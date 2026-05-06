@@ -30,7 +30,7 @@ start_link() ->
 
 init([]) ->
     self() ! connect,
-    {ok, #{client => undefined, advertised => false}}.
+    {ok, #{pool => undefined, realm_tag => undefined, advertised => false}}.
 
 handle_call(_Msg, _From, State) ->
     {reply, {error, unknown}, State}.
@@ -41,49 +41,51 @@ handle_cast(_Msg, State) ->
 handle_info(connect, State) ->
     Relays = relay_urls(),
     Realm = realm(),
-    Identity = identity(),
+    RealmTag = realm_tag(Realm),
     logger:info("[app_weather_rpc] Connecting to mesh (realm: ~s, relays: ~p)",
                 [Realm, Relays]),
-    case macula_mesh_client:start_link(#{
-        relays => Relays,
-        realm => Realm,
-        identity => Identity,
-        type => <<"service">>
-    }) of
-        {ok, Client} ->
-            logger:info("[app_weather_rpc] Connected to relay mesh"),
-            erlang:monitor(process, Client),
-            self() ! {advertise, Client},
-            {noreply, State#{client => Client}};
-        {error, Reason} ->
-            logger:warning("[app_weather_rpc] Connect failed: ~p, retrying", [Reason]),
-            erlang:send_after(?RETRY_INTERVAL_MS, self(), connect),
-            {noreply, State}
-    end;
+    on_connect(macula:connect(Relays, #{}), RealmTag, State);
 
-handle_info({advertise, Client}, State) ->
+handle_info({advertise, Pool, RealmTag}, State) ->
     Procedure = rpc_procedure(),
     Handler = fun(Args) ->
         Result = handle_weather_request(Args),
         iolist_to_binary(json:encode(Result))
     end,
-    case macula_mesh_client:advertise(Client, Procedure, Handler) of
-        {ok, _Ref} ->
-            logger:info("[app_weather_rpc] Advertised ~s on mesh", [Procedure]),
-            {noreply, State#{advertised => true}};
-        {error, Reason} ->
-            logger:warning("[app_weather_rpc] Advertise failed: ~p, retrying", [Reason]),
-            erlang:send_after(?RETRY_INTERVAL_MS, self(), {advertise, Client}),
-            {noreply, State}
-    end;
+    on_advertise(macula:advertise(Pool, RealmTag, Procedure, Handler, #{}),
+                 Procedure, Pool, RealmTag, State);
 
 handle_info({'DOWN', _Ref, process, _Pid, Reason}, State) ->
-    logger:warning("[app_weather_rpc] Relay client died: ~p, reconnecting", [Reason]),
+    logger:warning("[app_weather_rpc] Mesh pool died: ~p, reconnecting", [Reason]),
     erlang:send_after(?RETRY_INTERVAL_MS, self(), connect),
-    {noreply, State#{client => undefined, advertised => false}};
+    {noreply, State#{pool => undefined, advertised => false}};
 
 handle_info(_Msg, State) ->
     {noreply, State}.
+
+on_connect({ok, Pool}, RealmTag, State) ->
+    logger:info("[app_weather_rpc] Connected to relay mesh"),
+    erlang:monitor(process, Pool),
+    self() ! {advertise, Pool, RealmTag},
+    {noreply, State#{pool => Pool, realm_tag => RealmTag}};
+on_connect({error, Reason}, _RealmTag, State) ->
+    logger:warning("[app_weather_rpc] Connect failed: ~p, retrying", [Reason]),
+    erlang:send_after(?RETRY_INTERVAL_MS, self(), connect),
+    {noreply, State}.
+
+on_advertise(ok, Procedure, _Pool, _RealmTag, State) ->
+    logger:info("[app_weather_rpc] Advertised ~s on mesh", [Procedure]),
+    {noreply, State#{advertised => true}};
+on_advertise({error, Reason}, _Procedure, Pool, RealmTag, State) ->
+    logger:warning("[app_weather_rpc] Advertise failed: ~p, retrying", [Reason]),
+    erlang:send_after(?RETRY_INTERVAL_MS, self(), {advertise, Pool, RealmTag}),
+    {noreply, State}.
+
+%% V2 wants a 32-byte realm tag. Hash the user-supplied string so two
+%% callers with the same realm name still land on the same wire-level
+%% realm.
+realm_tag(Realm) when is_binary(Realm) ->
+    crypto:hash(sha256, Realm).
 
 %%====================================================================
 %% RPC Handler
@@ -229,12 +231,6 @@ realm() ->
     case os:getenv("MACULA_REALM") of
         false -> <<"io.macula">>;
         R -> list_to_binary(R)
-    end.
-
-identity() ->
-    case os:getenv("WEATHER_IDENTITY") of
-        false -> <<"hecate-app-weather">>;
-        I -> list_to_binary(I)
     end.
 
 rpc_procedure() ->
