@@ -1,4 +1,7 @@
-name: Docker Build & Push
+name: Docker Build & Push (Codeberg Container Registry)
+
+# Push to main → :main + :<sha> (amd64 only, fast)
+# Push to tag  → :vX.Y.Z + :vX.Y + :latest (amd64 only)
 
 on:
   push:
@@ -6,38 +9,37 @@ on:
     tags: ['v*']
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: codeberg.org
+  IMAGE_NAME: codeberg.org/hecate-apps/hecate-app-weather
 
 jobs:
   build:
     name: Build and Push
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Login to ghcr.io
+      - name: Log in to Codeberg Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.CODEBERG_PUBLISHER_USER }}
+          password: ${{ secrets.CODEBERG_PACKAGE_TOKEN }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
+            type=ref,event=branch,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
